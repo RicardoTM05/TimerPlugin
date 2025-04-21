@@ -339,7 +339,7 @@ If `IntervalUnits=Hours` and `Interval=1`, the timer will execute the [`OnTickAc
 
 When `Interval <= 0`, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction) will never be executed.
 
-Every time the timer reaches the interval, it counts a "tick" up. The total ticks count can be returned by using the Format Code `%k` on the [`Format`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Format) option, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction), or on any other action.
+Every time the timer reaches the interval, it counts a "tick" up. The total ticks count can be returned by using the [Format Code](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) `%k` on the [`Format`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Format) option, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction), or on any other action.
 
 All units take fractional numbers except milliseconds; any fraction in ms will be floored to the nearest integer.
 
