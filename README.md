@@ -45,7 +45,7 @@ The package includes the plugin and 5 example skins to get you started.
 
 ## 📖 Documentation
 
-For a basic countdown timer:
+For a basic timer:
 
 ```ini
 [MeasureTimer]
