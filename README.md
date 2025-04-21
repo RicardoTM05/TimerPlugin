@@ -21,9 +21,9 @@ Timer Plugin provides timing functionality (typically accurate to within a few m
 
 ## 📥 Download & Installation
 
-Download the latest `.rmskin` package:
+Download the latest `.rmskin` package from releases:
 
-[TimerPlugin\_1.1.rmskin](TimerPlugin_1.1.rmskin)
+[*Releases*](https://github.com/RicardoTM05/TimerPlugin/releases)
 
 The package includes the plugin and 5 example skins to get you started.
 
