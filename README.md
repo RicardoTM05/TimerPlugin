@@ -34,7 +34,7 @@ The package includes the plugin and 5 example skins to get you started.
 
 ## 📝 Changelog
 
-- Renamed `Update` → `UpdateTimer`
+- Renamed `Update` → [`UpdateTimer`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#UpdateTimer)
 - Removed fractional time codes (`%tfd`, `%tfh`, `%tfm`, `%tfs`)
 - Added decimal‑places operator `{N}` for total‑time codes (`%td`, `%th`, `%tm`, `%ts`)
   - e.g. `%td{3}` → `3.125` days
@@ -110,10 +110,10 @@ OnTickAction=[]
 - **UpdateTimer**: ms between updates (timer always runs). `-1` hides display but timer continues.
 - **Duration/TargetTime**: Set stop point by duration or date/time string.
 - **FormatLocale**: e.g. `es-MX` to parse localized dates.
-- **Interval**: fires `OnTickAction` every N units.
+- **Interval**: fires [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction) every N units.
 - **Countdown**: show remaining rather than elapsed time.
 
-### Time Codes Table
+### Format Codes Table
 | Code                               | Description                                                                         |
 | ---------------------------------- | ----------------------------------------------------------------------------------- |
 | `%D`                               | Days (zero‑padded)                                                                  |
@@ -183,17 +183,17 @@ The plugin measure will not update until started, once started it will update on
 
 When `UpdateTimer=-1`, the measure will not update but the timer will run and work normally. The only difference is that the measure will not display the elapsed/remaining time.
 
-The lowest possible value for `UpdateTimer` is `1`, however, setting it this low doesn't offer better precision. For most tasks leaving it at 1000 is just fine. If a low update is required, setting it at `16` is the lowest recommended.
+The lowest possible value for [`UpdateTimer`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#UpdateTimer) is `1`, however, setting it this low doesn't offer better precision. For most tasks leaving it at 1000 is just fine. If a low update is required, setting it at `16` is the lowest recommended.
 
 The timer itself runs on a different thread, this means that it doesn't depend on Rainmeter's Update to work. This Update value is only the rate at which the plugin's measure is updated to report the timer's elapsed/remaining time to Rainmeter by updating its Number and String values.
 
-The measure will also update automatically when executing any command that changes its state (Start, Stop, Pause, Resume, Reset, Dismiss) even if `UpdateTimer=-1` is set. The update will occur before executing the actions. For example, if `[!CommandMeasure Timer Stop]`, the timer will first stop, then it will update the measure and finally will execute the `OnStopAction`. The same order applies to all other commands.
+The measure will also update automatically when executing any command that changes its state (Start, Stop, Pause, Resume, Reset, Dismiss) even if `UpdateTimer=-1` is set. The update will occur before executing the actions. For example, if `[!CommandMeasure Timer Stop]`, the timer will first stop, then it will update the measure and finally will execute the [`OnStopAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStopAction). The same order applies to all other commands.
 
 In short, if you don't need to display the elapsed/remaining time, then simply leave `UpdateTimer=-1`, the timer will still run normally.  
 If you need to display the time or use the string value for anything else, set `UpdateTimer=1000` (or lower if needed).  
-If you only need to display the time on each tick, set `UpdateTimer` and `Interval` to the same value.
+If you only need to display the time on each tick, set [`UpdateTimer`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#UpdateTimer) and [`Interval`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Interval) to the same value.
 
-If your skin will only display the time given by the timer and nothing else that needs regular updating, it's recommended to set `Update=-1` on `[Rainmeter]` to avoid the regular skin updates from interfering with the plugin’s measure update. This won’t stop the plugin from ticking at the right time because again, the timer is in a separate thread and it will continue regardless of Rainmeter’s update cycle. The `OnTickAction` is still executed at the right moment.
+If your skin will only display the time given by the timer and nothing else that needs regular updating, it's recommended to set `Update=-1` on `[Rainmeter]` to avoid the regular skin updates from interfering with the plugin’s measure update. This won’t stop the plugin from ticking at the right time because again, the timer is in a separate thread and it will continue regardless of Rainmeter’s update cycle. The [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction) is still executed at the right moment.
 
 ---
 
@@ -205,19 +205,19 @@ Defines the format string returned by the measure. It works pretty much like the
 **Values:**
 - `"Any string with or without %Codes"`
 
-It can use any Format Code from the Format Codes list to return the formatted elapsed time on every measure update.
+It can use any Format Code from the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) list to return the formatted elapsed time on every measure update.
 
 Example:  
 `Format= %H-%M-%S` will return the elapsed/remaining time as `07-25-32`.
 
-Check the Format Codes section to see all available format codes.
+Check the Format Codes section to see all available [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table).
 
 ---
 
 ### **DurationUnits**
 **Default**: `Milliseconds`
 
-Defines the units the `Duration` option will take.
+Defines the units the [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#duration) option will take.
 
 **Values:**
 - `1`, `ms`, `mil`, `millisecond`, `milliseconds`
@@ -233,17 +233,17 @@ Although you can set e.g. `DurationUnits=2`, the option itself can't take math d
 ### **Duration**
 **Default**: `-1`
 
-Defines the duration of the timer in the units set by the `DurationUnits` option.
+Defines the duration of the timer in the units set by the [`DurationUnits`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#DurationUnits) option.
 
 **Values:**
 - `<= 0`: Disabled  
 - `> 0`: Timer duration
 
-Once the timer reaches the set duration it will stop automatically and will execute the `OnStopAction`.
+Once the timer reaches the set duration it will stop automatically and will execute the [`OnStopAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStopAction).
 
 When `Duration=-1` (or any value <= 0) the timer will run until manually stopped.
 
-If `ResetOnStop` is enabled, the timer will return to 00:00:00 when it stops.
+If [`ResetOnStop`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#ResetOnStop) is enabled, the timer will return to 00:00:00 when it stops.
 
 All units take fractional numbers except milliseconds. Any fraction in ms will be floored to the nearest integer.
 
@@ -257,7 +257,7 @@ Defines the duration of the timer with a formatted time string.
 **Values:**
 - `2025/04/26 06:48:17`: The timer will stop on April 26, 2025 at 06:48:17 AM.
 
-When a `TargetTime` string is given, the `Duration` value is ignored.
+When a [`TargetTime`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#TargetTime) string is given, the [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#duration) value is ignored.
 
 Some valid time string formats include:
 
@@ -282,21 +282,21 @@ When a time-only value is given, it will assume today's date. If the time has al
 If a date in the past that is greater than one day is given, it will fail and start with `duration=-1`. An error will be logged.  
 If an invalid format is given, then it will start with `duration=-1`. An error will be logged.
 
-To use a specific date format, use the `FormatLocale` option.
+To use a specific date format, use the [`FormatLocale`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#FormatLocale) option.
 
 ---
 
 ### FormatLocale
 **Default**: `""`
 
-An optional value that defines the "language - locale" that the formatted date/time string defined in `TargetTime` is in.
+An optional value that defines the "language - locale" that the formatted date/time string defined in [`TargetTime`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#TargetTime) is in.
 
 Example:
 - `es-MX`
 
 For a list of all valid locales visit: [Microsoft LCID List](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-lcid/a9eac961-e77d-41a6-90a5-ce1a8b0cdb9c)
 
-If this option is not defined, the plugin will compare the given `TargetTime` string to a set list of common locales.
+If this option is not defined, the plugin will compare the given [`TargetTime`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#TargetTime) string to a set list of common locales.
 
 Examples:
 ```
@@ -312,7 +312,7 @@ TargetTime=25 Ebrill 2025
 ### IntervalUnits
 **Default**: `Milliseconds`
 
-Defines the units the `Interval` option will take.
+Defines the units the [`Interval`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Interval) option will take.
 
 Values:
 - `1`, `ms`, `mil`, `millisecond`, `milliseconds`
@@ -328,18 +328,18 @@ Although you can set e.g. `IntervalUnits=3`, the option itself can't take math d
 ### Interval
 **Default**: `-1`
 
-Defines the interval in the units set by the `IntervalUnits` option at which the timer will execute the `OnTickAction`.
+Defines the interval in the units set by the [`IntervalUnits`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#IntervalUnits) option at which the timer will execute the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction).
 
 Values:
 - `<= 0`: Disabled
 - `> 0`: Tick interval
 
 Example:
-If `IntervalUnits=Hours` and `Interval=1`, the timer will execute the `OnTickAction` once an hour.
+If `IntervalUnits=Hours` and `Interval=1`, the timer will execute the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction) once an hour.
 
-When `Interval <= 0`, the `OnTickAction` will never be executed.
+When `Interval <= 0`, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction) will never be executed.
 
-Every time the timer reaches the interval, it counts a "tick" up. The total ticks count can be returned by using the Format Code `%k` on the `Format` option, the `OnTickAction`, or on any other action.
+Every time the timer reaches the interval, it counts a "tick" up. The total ticks count can be returned by using the Format Code `%k` on the [`Format`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Format) option, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction), or on any other action.
 
 All units take fractional numbers except milliseconds; any fraction in ms will be floored to the nearest integer.
 
@@ -356,7 +356,7 @@ Values:
 - `-1`: Disabled
 - `1`: Enabled
 
-If enabled, and `Duration` or `TargetTime` are set, the strings returned by the Format Codes will start from the `Duration` and will stop at zero.
+If enabled, and [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#duration) or [`TargetTime`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#TargetTime) are set, the strings returned by the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) will start from the [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Duration) and will stop at zero.
 
 ---
 
@@ -372,7 +372,7 @@ Values:
 ---
 
 ## Actions
-The following actions can use the `Format Codes` to export the timer's elapsed time.
+The following actions can use the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) to export the timer's elapsed time.
 
 ### OnStartAction
 Executes given bangs when the timer starts.
@@ -443,7 +443,7 @@ Logs: `Tick 27.`
 The following commands are used with the `!CommandMeasure MeasureName "Command"` bang.
 
 ### Start
-Starts and executes the `OnStartAction`.
+Starts and executes the [`OnStartAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStartAction).
 
 Example:
 ```
@@ -451,7 +451,7 @@ Example:
 ```
 
 ### Stop
-Stops and executes the `OnStopAction`.
+Stops and executes the [`OnStopAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStopAction).
 
 Example:
 ```
@@ -459,7 +459,7 @@ Example:
 ```
 
 ### Toggle
-Toggles the timer and executes the `OnStartAction` or `OnStopAction`.
+Toggles the timer and executes the [`OnStartAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStartAction) or [`OnStopAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStopAction).
 
 Example:
 ```
@@ -467,8 +467,8 @@ Example:
 ```
 
 ### Resume
-- If not running, first it will `Start` and then will execute `OnStartAction`.
-- If paused, it will `Resume` and execute `OnResumeAction`.
+- If not running, first it will `Start` and then will execute [`OnStartAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStartAction).
+- If paused, it will `Resume` and execute [`OnResumeAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnResumeAction).
 
 Example:
 ```
@@ -476,7 +476,7 @@ Example:
 ```
 
 ### Pause
-Pauses and executes `OnPauseAction`.
+Pauses and executes [`OnPauseAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnPauseAction).
 
 Example:
 ```
@@ -484,9 +484,9 @@ Example:
 ```
 
 ### ToggleResume
-- If not running, it will `Start` and execute `OnStartAction`.
-- If running, it will `Pause` and execute `OnPauseAction`.
-- If paused, it will `Resume` and execute `OnResumeAction`.
+- If not running, it will `Start` and execute [`OnStartAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStartAction).
+- If running, it will `Pause` and execute [`OnPauseAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnPauseAction).
+- If paused, it will `Resume` and execute [`OnResumeAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnResumeAction).
 
 Example:
 ```
@@ -494,11 +494,11 @@ Example:
 ```
 
 ### Reset
-- If running, it will restart from 0 and execute `OnStartAction`.
-- If paused, it will `Stop` and execute `OnResetAction`.
-- If not running and not at 0, it will reset to 0 and execute `OnResetAction`.
+- If running, it will restart from 0 and execute [`OnStartAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnStartAction).
+- If paused, it will `Stop` and execute [`OnResetAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnResetAction).
+- If not running and not at 0, it will reset to 0 and execute [`OnResetAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnResetAction).
 
-When `Countdown=1`, it will reset to the `Duration`.
+When `Countdown=1`, it will reset to the [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#duration).
 
 Example:
 ```
@@ -506,7 +506,7 @@ Example:
 ```
 
 ### Dismiss
-Stops the timer and executes `OnDismissAction`.
+Stops the timer and executes [`OnDismissAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnDismissAction).
 
 Example:
 ```
@@ -521,7 +521,7 @@ Example:
 - Argument: `"String"`
 - Default: `%t`
 
-Returns the elapsed time formatted using Format Codes.
+Returns the elapsed time formatted using [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table).
 
 Examples:
 ```
