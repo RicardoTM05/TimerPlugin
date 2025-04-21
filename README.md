@@ -113,6 +113,7 @@ OnTickAction=[]
 - **Interval**: fires `OnTickAction` every N units.
 - **Countdown**: show remaining rather than elapsed time.
 
+### Time Codes Table
 | Code                               | Description                                                                         |
 | ---------------------------------- | ----------------------------------------------------------------------------------- |
 | `%D`                               | Days (zero‑padded)                                                                  |
@@ -285,7 +286,7 @@ To use a specific date format, use the `FormatLocale` option.
 
 ---
 
-## FormatLocale
+### FormatLocale
 **Default**: `""`
 
 An optional value that defines the "language - locale" that the formatted date/time string defined in `TargetTime` is in.
@@ -308,7 +309,7 @@ TargetTime=25 Ebrill 2025
 
 ---
 
-## IntervalUnits
+### IntervalUnits
 **Default**: `Milliseconds`
 
 Defines the units the `Interval` option will take.
@@ -324,7 +325,7 @@ Although you can set e.g. `IntervalUnits=3`, the option itself can't take math d
 
 ---
 
-## Interval
+### Interval
 **Default**: `-1`
 
 Defines the interval in the units set by the `IntervalUnits` option at which the timer will execute the `OnTickAction`.
@@ -346,7 +347,7 @@ Note: It is important to understand that the timer has a delay of around ±16ms.
 
 ---
 
-## Countdown
+### Countdown
 **Default**: `-1`
 
 Sets the timer to return the remaining time instead of the elapsed time.
@@ -359,7 +360,7 @@ If enabled, and `Duration` or `TargetTime` are set, the strings returned by the 
 
 ---
 
-## ResetOnStop
+### ResetOnStop
 **Default**: `1`
 
 If disabled, the string value of the measure won't be reset to zero when the timer stops.
