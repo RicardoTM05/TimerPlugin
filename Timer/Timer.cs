@@ -1,4 +1,5 @@
-﻿using System;
+
+using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,57 +9,280 @@ using System.Text;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Globalization;
+using System.Windows.Forms;
 
 namespace TimerPlugin
 {
     class Measure
     {
+        // Exposed Variables
+        private double duration = 0;
+        private double interval = 0;
+        private int repeat = -1;
+        private int update = 1000;
+        private bool resetOnStop = true;
+        private bool isCountdown = false;
+        private bool debug = false;
+        private bool warnings = false;
+        private string targetTime;
+        private string durationUnits = "milliseconds";
+        private string IntervalUnits = "milliseconds";
+        private string formatLocale;
+        private string formatString = "%t";
+
+        private string onTickAction;
+        private string onStartAction;
+        private string onStopAction;
+        private string onResumeAction;
+        private string onPauseAction;
+        private string onResetAction;
+        private string onDismissAction;
+        private string onRepeatAction;
+
+        // Internal Variables
         internal API _api;
 
         internal IntPtr skin;
         internal string measureName;
         internal string skinName;
         internal CancellationTokenSource _cts;
-        internal ManualResetEventSlim _pauseEvent = new(true);
-        internal Stopwatch _stopwatch;
+        internal readonly Stopwatch _stopwatch = new Stopwatch();
         internal Task _timerTask;
+        internal TaskCompletionSource<object> _resumeTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private string _lastFormatString;
+        private string _lastOnTickAction;
+        private string _lastOnStartAction;
+        private string _lastOnStopAction;
+        private string _lastOnResumeAction;
+        private string _lastOnPauseAction;
+        private string _lastOnResetAction;
+        private string _lastOnDismissAction;
+        private string _lastOnRepeatAction;
+
+        internal string _updateBang;
+
+        internal Action _formatString;
+        private Action _onTickAction;
+        private Action _onStartAction;
+        private Action _onStopAction;
+        private Action _onResumeAction;
+        private Action _onPauseAction;
+        private Action _onResetAction;
+        private Action _onDismissAction;
+        private Action _onRepeatAction;
+
+        private CultureInfo _customCulture;
+        private double lcm = 0;
+        private double pauseTime = 0;
+        private long totalTicks = 0;
+        private long durationMs = 0;
+        private long intervalMs = 0;
         internal int updateDivider;
-        internal double duration;
-        internal string targetTime;
-        internal long durationMs;
-        internal double interval;
-        internal long intervalMs;
-        internal string onTickAction;
-        internal string onStartAction;
-        internal string onStopAction;
-        internal string onResumeAction;
-        internal string onPauseAction;
-        internal string onResetAction;
-        internal string onDismissAction;
-        internal bool resetOnStop;
-        internal int _tickCount = 0;
-        // State: 0 = stopped, 1 = running, 2 = paused.
-        internal int state = 0;
-        internal bool isCountdown;
-        internal int update;
-        internal string durationUnits;
-        internal string IntervalUnits;
-        internal string formatString;
-        internal string formatLocale;
+        private int _tickCount = 0;
+        private int repeatCount = 0;
+        private string stopTime;
+        private string _lastFormatLocale;
+        private string timerMode = "None";
         internal string timeString;
         private bool _suppressCatchUp = false;
+        private bool hasDuration = false;
+        private bool doUpdate = true;
+        private bool doInterval = false;
 
+        internal enum TimerState
+        {
+            Stopped = 0,
+            Running = 1,
+            Paused = 2
+        }
+
+        internal TimerState state = TimerState.Stopped;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SendNotifyMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+
+        private static readonly CultureInfo[] FallbackCultures = new[]
+        {
+            new CultureInfo("en-US"), // English (United States)
+            new CultureInfo("en-GB"), // English (United Kingdom)
+            new CultureInfo("fr-FR"), // French (France)
+            new CultureInfo("de-DE"), // German (Germany)
+            new CultureInfo("es-ES"), // Spanish (Spain)
+            new CultureInfo("es-MX"), // Spanish (Mexico)
+            new CultureInfo("it-IT"), // Italian (Italy)
+            new CultureInfo("pt-PT"), // Portuguese (Portugal)
+            new CultureInfo("pt-BR"), // Portuguese (Brazil)
+            new CultureInfo("ru-RU"), // Russian (Russia)
+            new CultureInfo("ja-JP"), // Japanese (Japan)
+            new CultureInfo("zh-CN"), // Chinese (Simplified, China)
+            new CultureInfo("zh-TW"), // Chinese (Traditional, Taiwan)
+            new CultureInfo("ko-KR"), // Korean (Korea)
+            new CultureInfo("nl-NL"), // Dutch (Netherlands)
+            new CultureInfo("sv-SE"), // Swedish (Sweden)
+            new CultureInfo("pl-PL"), // Polish (Poland)
+            new CultureInfo("tr-TR"), // Turkish (Turkey)
+            new CultureInfo("ar-SA"), // Arabic (Saudi Arabia)
+            new CultureInfo("cs-CZ"), // Czech (Czech Republic)
+            new CultureInfo("fi-FI"), // Finnish (Finland)
+            new CultureInfo("da-DK"), // Danish (Denmark)
+            new CultureInfo("he-IL"), // Hebrew (Israel)
+            new CultureInfo("hu-HU"), // Hungarian (Hungary)
+            new CultureInfo("no-NO"), // Norwegian (Norway)
+            new CultureInfo("th-TH"), // Thai (Thailand)
+        };
+
+        private const int WM_APP = 0x8000;
+        private const int WM_RAINMETER_EXECUTE = WM_APP + 2;
+        private const string RAINMETER_CLASS_NAME = "DummyRainWClass";
+        private const string RAINMETER_WINDOW_NAME = "Rainmeter control window";
+        private IntPtr _hwndRainmeter;
+
+        private void EnsureRainmeterHwnd()
+        {
+            if (_hwndRainmeter == IntPtr.Zero)
+                _hwndRainmeter = FindWindow(RAINMETER_CLASS_NAME, RAINMETER_WINDOW_NAME);
+        }
+        internal class Action
+        {
+            private readonly Measure _parent;
+            private readonly List<IFormatSegment> _segments;
+
+            internal Action(Measure parent, string input)
+            {
+                _parent = parent;
+                _segments = _parent.CompileString(input);
+            }
+
+            internal string Render()
+            {
+                return _parent.RenderString(_segments);
+            }
+        }
+        private interface IFormatSegment
+        {
+            string GetValue();
+        }
+        private class StaticSegment : IFormatSegment
+        {
+            private readonly string _value;
+            internal StaticSegment(string value) => _value = value;
+            public string GetValue() => _value;
+        }
+        private class DynamicSegment : IFormatSegment
+        {
+            private readonly Func<string> _getter;
+            internal DynamicSegment(Func<string> getter) => _getter = getter;
+            public string GetValue() => _getter();
+        }
+        private static readonly Regex FormatRegex = new(
+        @"%(k|tf|tms|ts|tm|th|td|T|t|H|M|S|D|f{1,7}|F{1,7})(?:\{(\d+)\})?",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+        );
+        private void CompileActions()
+        {
+            if (formatString != _lastFormatString)
+            {
+                _formatString = new Action(this, formatString);
+                _lastFormatString = formatString;
+            }
+            if (formatLocale != _lastFormatLocale)
+            {
+                if (!string.IsNullOrWhiteSpace(formatLocale))
+                {
+                    try
+                    {
+                        _customCulture = new CultureInfo(formatLocale);
+                    }
+                    catch (CultureNotFoundException)
+                    {
+                            Log("Error", $"Timer.dll: Unknown culture: {formatLocale}");
+                        _customCulture = null;
+                    }
+                }
+                else
+                {
+                    _customCulture = null;
+                }
+                _lastFormatLocale = formatLocale;
+            }
+            if (onTickAction != _lastOnTickAction)
+            {
+                _onTickAction = new Action(this, onTickAction);
+                _lastOnTickAction = onTickAction;
+            }
+            if (onStartAction != _lastOnStartAction)
+            {
+                _onStartAction = new Action(this, onStartAction);
+                _lastOnStartAction = onStartAction;
+            }
+            if (onStopAction != _lastOnStopAction)
+            {
+                _onStopAction = new Action(this, onStopAction);
+                _lastOnStopAction = onStopAction;
+            }
+            if (onResumeAction != _lastOnResumeAction)
+            {
+                _onResumeAction = new Action(this, onResumeAction);
+                _lastOnResumeAction = onResumeAction;
+            }
+            if (onPauseAction != _lastOnPauseAction)
+            {
+                _onPauseAction = new Action(this, onPauseAction);
+                _lastOnPauseAction = onPauseAction;
+            }
+            if (onResetAction != _lastOnResetAction)
+            {
+                _onResetAction = new Action(this, onResetAction);
+                _lastOnResetAction = onResetAction;
+            }
+            if (onDismissAction != _lastOnDismissAction)
+            {
+                _onDismissAction = new Action(this, onDismissAction);
+                _lastOnDismissAction = onDismissAction;
+            }
+            if (onRepeatAction != _lastOnRepeatAction)
+            {
+                _onRepeatAction = new Action(this, onRepeatAction);
+                _lastOnRepeatAction = onRepeatAction;
+            }
+        }
+
+        private void Log(string Type, string message)
+        {
+            if (Type == "Error")
+            {
+                _api.Log(API.LogType.Error, message);
+            }
+            else if (Type == "Debug" && debug == true)
+            {
+                _api.Log(API.LogType.Debug, message);
+            }
+            else if (Type == "Warning" && warnings == true)
+            {
+                _api.Log(API.LogType.Warning, message);
+            }
+            else if (Type == "Notice")
+            {
+                _api.Log(API.LogType.Notice, message);
+            }
+            return;
+        }
         internal void Reload(API api)
         {
             _api = api;
 
+            _updateBang = $"!UpdateMeasure \"{measureName}\"";
+
             // Force UpdateDivider=-1 to avoid rainmeter from updating the measure.
-            updateDivider = api.ReadIntFromSection(measureName, "UpdateDivider", 1);
+            updateDivider = _api.ReadInt("UpdateDivider", 1);
             if (updateDivider != -1)
             {
-                api.Execute($"!SetOption \"{measureName}\" \"UpdateDivider\" \"-1\"");
+                _api.Execute($"!SetOption \"{measureName}\" \"UpdateDivider\" \"-1\"");
             }
-
 
             // Options
             update = _api.ReadInt("UpdateTimer", 1000);
@@ -70,7 +294,11 @@ namespace TimerPlugin
             IntervalUnits = _api.ReadString("IntervalUnits", "milliseconds");
             interval = _api.ReadDouble("Interval", -1);
             isCountdown = _api.ReadInt("Countdown", -1) > 0;
-            resetOnStop = _api.ReadInt("ResetOnStop", 1) > 0;
+            resetOnStop = _api.ReadInt("ResetOnStop", -1) > 0;
+            repeat = _api.ReadInt("Repeat", -1);
+
+            debug = _api.ReadInt("Debug", 0) > 0;
+            warnings = _api.ReadInt("Warnings", 1) > 0;
 
             // Actions
             onTickAction = _api.ReadString("OnTickAction", "", false);
@@ -80,103 +308,331 @@ namespace TimerPlugin
             onPauseAction = _api.ReadString("OnPauseAction", "", false);
             onResetAction = _api.ReadString("OnResetAction", "", false);
             onDismissAction = _api.ReadString("OnDismissAction", "", false);
+            onRepeatAction = _api.ReadString("OnRepeatAction", "", false);
 
-            // TargetTime check
+            CompileActions();
+
+            // Initial Configutation
             if (string.IsNullOrWhiteSpace(targetTime))
                 durationMs = ToMilliseconds(duration, durationUnits);
             intervalMs = ToMilliseconds(interval, IntervalUnits);
-        }
 
-        internal async Task RunTimer( long durationMs, long intervalMs, ManualResetEventSlim pauseEvent, CancellationToken token, Stopwatch stopwatch)
+            doUpdate = update > 0;
+            doInterval = intervalMs > 0;
+            hasDuration = durationMs > 0;
+
+            CheckTimerMode();
+        }
+        #region Timer
+        private async Task StartTimer()
         {
-            double AutoPeriod = update > 0 ? update : 0;
-            bool doAutoUpdate = AutoPeriod > 0;
-            bool doInterval = intervalMs > 0;
-
-            double nextAutoMs = AutoPeriod;
-            double nextIntervalMs = doInterval ? intervalMs : double.PositiveInfinity;
-
-            stopwatch.Start();
-
-            TimeSpan delayTimeSpan = TimeSpan.Zero;
-
-            while (!token.IsCancellationRequested)
+            try
             {
-                pauseEvent.Wait(token);
+                var oldCts = _cts;
+                var oldTask = _timerTask;
 
-                var now = stopwatch.Elapsed.TotalMilliseconds;
+                oldCts?.Cancel();
 
-                double nextTarget = Math.Min(nextAutoMs, nextIntervalMs);
-                if (durationMs > 0)
-                    nextTarget = Math.Min(nextTarget, durationMs);
-
-                var delayMs = Math.Max(1.0, nextTarget - now);
-                delayTimeSpan = TimeSpan.FromMilliseconds(delayMs);
-                await Task.Delay(delayTimeSpan, token);
-
-                
-                if (doInterval && _suppressCatchUp)
+                if (oldTask != null)
                 {
-                    nextIntervalMs = Math.Ceiling(now / intervalMs) * intervalMs;
-                    _suppressCatchUp = false;
-                }
-                now = stopwatch.Elapsed.TotalMilliseconds;
-
-                if (durationMs > 0 && now >= durationMs)
-                {
-                    if (doInterval && nextIntervalMs - intervalMs < durationMs)
-                        DispatchTick();
-                    break;
+                    try
+                    {
+                        await oldTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        Log("Error", $"Timer.dll: {ex}");
+                    }
                 }
 
-                while (doInterval && (now = _stopwatch.Elapsed.TotalMilliseconds) >= nextIntervalMs)
-                {
-                    nextIntervalMs += intervalMs;
-                    DispatchTick2();
-                }
+                oldCts?.Dispose();
 
-                while (doAutoUpdate && (now = _stopwatch.Elapsed.TotalMilliseconds) >= nextAutoMs)
+                _cts = new CancellationTokenSource();
+                _resumeTcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _resumeTcs.TrySetResult(null);
+
+                _timerTask = Task.Run(() => Timer(_cts.Token, _stopwatch), _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                Log("Error", $"Timer.dll: Error when starting the timer: {ex}");
+            }
+        }
+        private async Task Timer(CancellationToken token, Stopwatch stopwatch)
+        {
+            if (stopwatch == null)
+                throw new InvalidOperationException("TimerPlugin: stopwatch must be initialized before running the timer loop.");
+            
+            double nextUpdateMs = update;
+            double nextIntervalMs = intervalMs;
+            double nextSharedMs = lcm;
+
+            if (timerMode == "None")
+            {
+                return;
+            }
+            else if (timerMode == "Mixed")
+            {
+                try
                 {
-                    nextAutoMs += AutoPeriod;
-                    _api.Execute($"!UpdateMeasure \"{measureName}\"");
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (state == TimerState.Paused)
+                            await _resumeTcs.Task.ConfigureAwait(false);
+
+                        token.ThrowIfCancellationRequested();
+
+                        double now = stopwatch.Elapsed.TotalMilliseconds;
+
+                        if (_suppressCatchUp)
+                        {
+                            nextIntervalMs = Math.Ceiling(now / intervalMs) * intervalMs;
+                            nextUpdateMs = Math.Ceiling(now / update) * update;
+                            if (!double.IsInfinity(lcm) && lcm > 0)
+                                nextSharedMs = Math.Ceiling(now / lcm) * lcm;
+                            _suppressCatchUp = false;
+                        }
+
+                        double nextTarget = Math.Min(nextUpdateMs, nextIntervalMs);
+                        if (hasDuration)
+                            nextTarget = Math.Min(nextTarget, durationMs);
+                        double delayMs = Math.Max(1.0, nextTarget - now);
+                        await Task.Delay(TimeSpan.FromMilliseconds(delayMs), token).ConfigureAwait(false);
+
+                        now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (hasDuration && now >= durationMs)
+                        {
+                            if (_tickCount >= totalTicks) break;
+                            else if (now >= durationMs + intervalMs)
+                            {
+                                break;
+                            }
+                        }
+                        now = stopwatch.Elapsed.TotalMilliseconds;
+
+                        if (doUpdate && doInterval)
+                        {
+                            while (!double.IsInfinity(lcm) && now >= nextSharedMs)
+                            {
+                                Tick(); Update(); Execute();
+                                nextIntervalMs += intervalMs;
+                                nextUpdateMs += update;
+                                nextSharedMs += lcm;
+                            }
+                            while (now >= nextIntervalMs)
+                            {
+                                Tick(); Execute();
+                                nextIntervalMs += intervalMs;
+                            }
+                            while (now >= nextUpdateMs)
+                            {
+                                Update();
+                                nextUpdateMs += update;
+                            }
+                        }
+                        else break;
+                    }
+                }
+                catch (OperationCanceledException)
+                { }
+                catch (Exception)
+                { }
+                finally
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        if (repeat == 0 || (repeat > 0 && repeatCount < repeat))
+                        {
+                            DoRepeat();
+                        }
+                        else
+                        {
+                            DoStop();
+                        }
+                    }
                 }
             }
-
-            if (!token.IsCancellationRequested)
-                DoStop();
-
-            void DispatchTick()
+            else if (timerMode == "Update")
             {
-                _tickCount++;
-                if (update > 0 && stopwatch.IsRunning)
-                    _api.Execute($"!UpdateMeasure \"{measureName}\"");
-                if (!string.IsNullOrWhiteSpace(onTickAction))
+                try
                 {
-                    _api.Execute(GetElapsedTime(onTickAction));
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (state == TimerState.Paused)
+                            await _resumeTcs.Task.ConfigureAwait(false);
+
+                        token.ThrowIfCancellationRequested();
+
+                        double now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (_suppressCatchUp)
+                        {
+                            nextUpdateMs = Math.Ceiling(now / update) * update;
+                            _suppressCatchUp = false;
+                        }
+                        double nextTarget = Math.Min(nextUpdateMs, durationMs);
+                        double delayMs = Math.Max(1.0, nextTarget - now);
+                        await Task.Delay(TimeSpan.FromMilliseconds(delayMs), token).ConfigureAwait(false);
+                        now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (hasDuration && now >= durationMs)
+                        {
+                            break;
+                        }
+                        now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (doUpdate && !doInterval)
+                        {
+                            while (now >= nextUpdateMs)
+                            {
+                                Update();
+                                nextUpdateMs += update;
+                            }
+                        }
+                        else break;
+                    }
+                }
+                catch (OperationCanceledException)
+                { }
+                catch (Exception)
+                { }
+                finally
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        if (repeat == 0 || (repeat > 0 && repeatCount < repeat))
+                        {
+                            DoRepeat();
+                        }
+                        else
+                        {
+                            DoStop();
+                        }
+                    }
                 }
             }
-            void DispatchTick2()
+            else if (timerMode == "Interval")
             {
-                _tickCount++;
-                if (!string.IsNullOrWhiteSpace(onTickAction))
+                try
                 {
-                    _api.Execute(GetElapsedTime(onTickAction));
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (state == TimerState.Paused)
+                            await _resumeTcs.Task.ConfigureAwait(false);
+
+                        token.ThrowIfCancellationRequested();
+
+                        double now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (_suppressCatchUp)
+                        {
+                            nextIntervalMs = Math.Ceiling(now / intervalMs) * intervalMs;
+                            _suppressCatchUp = false;
+                        }
+                        double nextTarget = Math.Min(nextIntervalMs, durationMs);
+                        double delayMs = Math.Max(1.0, nextTarget - now);
+                        await Task.Delay(TimeSpan.FromMilliseconds(delayMs), token).ConfigureAwait(false);
+                        now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (hasDuration && now >= durationMs)
+                        {
+                            if (_tickCount >= totalTicks) break;
+                        }
+                        now = stopwatch.Elapsed.TotalMilliseconds;
+                        if (doInterval && !doUpdate)
+                        {
+                            while (now >= nextIntervalMs)
+                            {
+                                Tick(); Execute();
+                                nextIntervalMs += intervalMs;
+                            }
+                        }
+                        else break;
+                    }
+                }
+                catch (OperationCanceledException)
+                { }
+                catch (Exception)
+                { }
+                finally
+                {
+                    if (!token.IsCancellationRequested)
+                    {
+                        if (repeat == 0 || (repeat > 0 && repeatCount < repeat))
+                        {
+                            DoRepeat();
+                        }
+                        else
+                        {
+                            DoStop();
+                        }
+                    }
                 }
             }
         }
+
+        private void Tick()
+        {
+            if (hasDuration && _tickCount >= totalTicks)
+                return;
+            _tickCount++;
+        }
+
+        private void CheckTimerMode()
+        {
+                if (doUpdate && doInterval)
+                {
+                    timerMode = "Mixed";
+                    lcm = LCM(intervalMs, update);
+                    if (hasDuration)
+                        totalTicks = durationMs / intervalMs;
+                }
+                else if (doUpdate && !doInterval)
+                    timerMode = "Update";
+                else if (doInterval && !doUpdate)
+                {
+                    timerMode = "Interval";
+                    if (hasDuration)
+                        totalTicks = durationMs / intervalMs;
+                }
+                else
+                    timerMode = "None";
+        }
+        private void Update() => SendBang(_updateBang);
+        private void Execute() => ExecuteCompiled(_onTickAction);
+        private static long GCD(long a, long b)
+        { while (b != 0) { var t = b; b = a % b; a = t; } return a; }
+        private static long LCM(long a, long b)
+        {
+            try
+            {
+                checked
+                {
+                    return (a / GCD(a, b)) * b;
+                }
+            }
+            catch (OverflowException)
+            {
+                return long.MaxValue;
+            }
+        }
+        internal unsafe void SendBang(string bang)
+        {
+            EnsureRainmeterHwnd();
+            if (_hwndRainmeter == IntPtr.Zero) return;
+
+            fixed (char* pBang = bang)
+            {
+                IntPtr lpBang = (IntPtr)pBang;
+                SendNotifyMessage(_hwndRainmeter, WM_RAINMETER_EXECUTE, skin, lpBang);
+            }
+        }
+        #endregion
 
         #region Commanding
         internal void CommandMeasure(string args)
         {
-            bool isRunning = _timerTask != null
-                             && !_timerTask.IsCompleted
-                             && !_cts.IsCancellationRequested;
-            bool isPaused = !_pauseEvent.IsSet;
+            bool isRunning = state != TimerState.Stopped;
+            bool isPaused = state == TimerState.Paused;
 
-            if (durationMs > 0 && intervalMs > durationMs)
+            if (hasDuration && intervalMs > durationMs)
             {
-                _api.Log(API.LogType.Error,
-                    $"Timer.dll: The interval ({intervalMs}) can't be greater than the duration ({durationMs}).");
+                Log("Error", $"Timer.dll: The interval ({intervalMs}) can't be greater than the duration ({durationMs}).");
                 return;
             }
 
@@ -185,21 +641,21 @@ namespace TimerPlugin
             switch (cmd)
             {
                 case "start":
-                    if (!CanStart(isRunning)) break;
+                    if (!CanStart()) break;
                     DoStart();
                     break;
 
                 case "pause":
-                    if (!CanPause(isRunning, isPaused)) break;
+                    if (!CanPause()) break;
                     DoPause();
                     break;
 
                 case "resume":
-                    if (!isRunning)
+                    if (state == TimerState.Stopped)
                     {
                         DoStart();
                     }
-                    else if (!CanResume(isPaused))
+                    else if (!CanResume())
                     {
                         break;
                     }
@@ -210,16 +666,16 @@ namespace TimerPlugin
                     break;
 
                 case "stop":
-                    if (!CanStop(isRunning)) break;
+                    if (!CanStop()) break;
                     DoStop();
                     break;
 
                 case "reset":
-                    DoReset(isRunning, isPaused);
+                    DoReset(false);
                     break;
 
                 case "dismiss":
-                    if (!CanStop(isRunning)) break;
+                    if (!CanStop()) break;
                     DoDismiss();
                     break;
 
@@ -235,7 +691,7 @@ namespace TimerPlugin
                     break;
 
                 default:
-                    _api.Log(API.LogType.Warning, $"Timer.dll: Unknown command: {args}");
+                    Log("Warning", $"Timer.dll: Unknown command: {args}");
                     break;
             }
         }
@@ -243,12 +699,11 @@ namespace TimerPlugin
         {
             if (!string.IsNullOrWhiteSpace(targetTime))
             {
-                durationMs = DateToMs(targetTime, formatLocale);
+                durationMs = DateToMs(targetTime);
                 durationUnits = "ms";
                 if (durationMs < 0)
                 {
-                    _api.Log(API.LogType.Error,
-                        $"Timer.dll: Invalid date: {targetTime}. It's in the past.");
+                    Log("Error", $"Timer.dll: Invalid date: {targetTime}. It's in the past.");
                 }
                 _suppressCatchUp = true;
             }
@@ -257,93 +712,87 @@ namespace TimerPlugin
                 durationMs = ToMilliseconds(duration, durationUnits);
             }
 
-            state = 1;
-            _cts?.Cancel();
-            _cts = new CancellationTokenSource();
-            _pauseEvent.Set();
+            state = TimerState.Running;
+            if (_cts != null)
+            {
+                _cts.Cancel();
+            }
+            pauseTime = 0;
             _tickCount = 0;
-            _stopwatch = Stopwatch.StartNew();
+            _stopwatch.Restart();
 
-            _api.Log(API.LogType.Debug, "Timer.dll: Started.");
+            Log("Debug", $"Timer.dll: Started.");
             if (execute && !string.IsNullOrWhiteSpace(onStartAction))
             {
-                _api.Execute($"!UpdateMeasure \"{measureName}\"");
-                _api.Execute(GetElapsedTime(onStartAction));
+                Update();
+                ExecuteCompiled(_onStartAction);
             }
             else if (execute)
-                _api.Execute($"!UpdateMeasure \"{measureName}\"");
+                Update();
 
-            _timerTask = RunTimer(
-                    durationMs,
-                    intervalMs,
-                    _pauseEvent,
-                    _cts.Token,
-                    _stopwatch
-                );
+            _ = StartTimer();
         }
         private void DoPause()
         {
+            _resumeTcs?.TrySetResult(null);
+            _resumeTcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             _stopwatch.Stop();
-            _pauseEvent.Reset();
-            state = 2;
+            pauseTime = GetCurrentTime();
+            state = TimerState.Paused;
 
-            _api.Log(API.LogType.Debug,
-                $"Timer.dll: Paused");
+            Log("Debug", $"Timer.dll: Paused");
 
-            _api.Execute($"!UpdateMeasure \"{measureName}\"");
+            Update();
             if (!string.IsNullOrWhiteSpace(onPauseAction))
-                _api.Execute(GetElapsedTime(onPauseAction));
+                ExecuteCompiled(_onPauseAction);
         }
         private void DoResume()
         {
+            _suppressCatchUp = true;
+            pauseTime = 0;
             if (!string.IsNullOrWhiteSpace(targetTime))
             {
-                _cts?.Cancel();
-
-                long elapsed = _stopwatch.ElapsedMilliseconds;
-                long msUntilTarget = DateToMs(targetTime,formatLocale);
-
-                durationMs = (elapsed + Math.Max(0, msUntilTarget));
+                long msUntilTarget = DateToMs(targetTime);
+                durationMs = msUntilTarget;
                 durationUnits = "ms";
-                
-                _cts = new CancellationTokenSource();
-                _pauseEvent.Set();
+
+                state = TimerState.Running;
+                _stopwatch.Reset();
+
                 _stopwatch.Start();
-                state = 1;
+                _resumeTcs.TrySetResult(null);
 
-                _suppressCatchUp = true;
+                Log("Debug", $"Timer.dll: Resumed.");
 
-                _timerTask = RunTimer(
-                    durationMs,
-                    intervalMs,
-                    _pauseEvent,
-                    _cts.Token,
-                    _stopwatch
-                );
+                Update();
+                if (!string.IsNullOrWhiteSpace(onResumeAction))
+                    ExecuteCompiled(_onResumeAction);
+
+                return;
             }
             else
             {
-
-                _pauseEvent.Set();
+                state = TimerState.Running;
                 _stopwatch.Start();
-                state = 1;
+                _resumeTcs.TrySetResult(null);
+                Log("Debug", $"Timer.dll: Resumed.");
             }
-            _api.Log(API.LogType.Debug,
-               $"Timer.dll: Resumed.");
 
-            _api.Execute($"!UpdateMeasure \"{measureName}\"");
+            Update();
             if (!string.IsNullOrWhiteSpace(onResumeAction))
-                _api.Execute(GetElapsedTime(onResumeAction));
-           
+                ExecuteCompiled(_onResumeAction);
         }
         private void DoStop()
         {
+            _resumeTcs?.TrySetResult(null);
             _cts?.Cancel();
-            _pauseEvent.Set();
-            if (_stopwatch.IsRunning) _stopwatch.Stop();
+            if (_stopwatch.IsRunning) _stopwatch.Stop(); stopTime = GetAdjustedTimeString(@"dd\:hh\:mm\:ss\.fffffff");
 
-            _api.Log(API.LogType.Debug, $"Timer.dll: Stopped.");
+            Log("Debug", $"Timer.dll: Stopped at {stopTime}.");
 
+
+            pauseTime = 0;
+            repeatCount = 0;
             state = 0;
 
             if (resetOnStop)
@@ -352,20 +801,22 @@ namespace TimerPlugin
                 _stopwatch.Reset();
             }
 
-            _api.Execute($"!UpdateMeasure \"{measureName}\"");
+            Update();
             if (!string.IsNullOrWhiteSpace(onStopAction))
-                _api.Execute(GetElapsedTime(onStopAction));
+                ExecuteCompiled(_onStopAction);
         }
         private void DoDismiss()
         {
+            _resumeTcs?.TrySetResult(null);
             _cts?.Cancel();
-            _pauseEvent.Set();
-            if (_stopwatch.IsRunning) _stopwatch.Stop();
 
-            _api.Log(API.LogType.Debug,
-                $"Timer.dll: Dismissed.");
+            if (_stopwatch.IsRunning)
+                _stopwatch.Stop(); stopTime = GetAdjustedTimeString(@"dd\:hh\:mm\:ss\.fffffff");
 
-            string actionStr = onDismissAction;
+            Log("Debug", $"Timer.dll: Dismissed at {stopTime}.");
+
+
+            Action actionStr = _onDismissAction;
 
             state = 0;
 
@@ -375,95 +826,316 @@ namespace TimerPlugin
                 _stopwatch.Reset();
             }
 
-            _api.Execute($"!UpdateMeasure \"{measureName}\"");
+            Update();
+
             if (!string.IsNullOrWhiteSpace(onDismissAction))
-                _api.Execute(GetElapsedTime(actionStr));
+                ExecuteCompiled(actionStr);
         }
-        private void DoReset(bool isRunning, bool isPaused)
+        private void DoReset(bool isRepeat)
         {
-            if (isRunning && !isPaused)
+            _resumeTcs?.TrySetResult(null);
+            _cts?.Cancel();
+            _stopwatch?.Stop(); stopTime = GetAdjustedTimeString(@"dd\:hh\:mm\:ss\.fffffff");
+
+            Action actionStr;
+
+            if (!isRepeat)
             {
-                _cts?.Cancel();
-                _pauseEvent.Set();
-                _stopwatch?.Stop();
+                actionStr = _onResetAction;
+            }
+            else
+            {
+                actionStr = _onRepeatAction;
+            }
 
-                string actionStr = onResetAction;
-
+            if (state == TimerState.Running)
+            {
                 _tickCount = 0;
                 _stopwatch.Reset();
 
-                _api.Execute($"!UpdateMeasure \"{measureName}\"");
-                if (!string.IsNullOrWhiteSpace(onResetAction))
-                    _api.Execute(GetElapsedTime(actionStr));
+                Log("Debug", $"Timer.dll: Reset at {stopTime}.");
+
+                Update();
+
+                if (isRepeat)
+                {
+                    if (!string.IsNullOrWhiteSpace(onRepeatAction))
+                        ExecuteCompiled(actionStr);
+                }
+                else
+                {
+                    if (!string.IsNullOrWhiteSpace(onResetAction))
+                        ExecuteCompiled(actionStr);
+                }
 
                 DoStart(false);
 
                 return;
             }
-            else if ((isRunning && isPaused) || !isRunning && (_tickCount > 0 || _stopwatch?.Elapsed.TotalMilliseconds > 0))
+            else if ((state == TimerState.Paused) || state == TimerState.Stopped && (_tickCount > 0 || GetCurrentTime() > 0))
             {
-                _cts?.Cancel();
-                _pauseEvent.Set();
-                _stopwatch?.Stop();
-
-                if (!string.IsNullOrWhiteSpace(onResetAction))
-                    _api.Execute(GetElapsedTime(onResetAction));
-                _api.Log(API.LogType.Debug,
-                $"Timer.dll: Reset.");
-
                 state = 0;
                 _tickCount = 0;
                 _stopwatch.Reset();
 
-                _api.Execute($"!UpdateMeasure \"{measureName}\"");
+                Log("Debug", $"Timer.dll: Reset at {stopTime}.");
+
+                Update();
+
+                if (isRepeat)
+                {
+                    if (!string.IsNullOrWhiteSpace(onRepeatAction))
+                        ExecuteCompiled(actionStr);
+                }
+                else
+                {
+                    if (!string.IsNullOrWhiteSpace(onResetAction))
+                        ExecuteCompiled(actionStr);
+                }
             }
+        }
+        private void DoRepeat()
+        {
+            repeatCount++;
+            DoReset(true);
         }
         #endregion
 
         #region Precondition helpers 
-        private bool CanStart(bool isRunning)
+        private bool CanStart()
         {
-            if (isRunning)
+            if (state != TimerState.Stopped)
             {
-                _api.Log(API.LogType.Warning, "Timer.dll: Already running.");
+                Log("Warning", "Timer.dll: Already running.");
                 return false;
             }
             return true;
         }
-        private bool CanPause(bool isRunning, bool isPaused)
+        private bool CanPause()
         {
-            if (!isRunning)
+            if (state == TimerState.Stopped)
             {
-                _api.Log(API.LogType.Warning, "Timer.dll: Not running.");
+                Log("Warning", "Timer.dll: Not running.");
                 return false;
             }
-            if (isPaused)
+            if (state == TimerState.Paused)
             {
-                _api.Log(API.LogType.Warning, "Timer.dll: Already paused.");
-                return false;
-            }
-            return true;
-        }
-        private bool CanResume(bool isPaused)
-        {
-            if (!isPaused)
-            {
-                _api.Log(API.LogType.Warning, "Timer.dll: Already running.");
+                Log("Warning", "Timer.dll: Already paused.");
                 return false;
             }
             return true;
         }
-        private bool CanStop(bool isRunning)
+        private bool CanResume()
         {
-            if (!isRunning)
+            if (state != TimerState.Paused)
             {
-                _api.Log(API.LogType.Warning, "Timer.dll: Not running.");
+                Log("Warning", "Timer.dll: Not paused.");
+                return false;
+            }
+            return true;
+        }
+        private bool CanStop()
+        {
+            if (state == TimerState.Stopped)
+            {
+                Log("Warning", "Timer.dll: Not running.");
                 return false;
             }
             return true;
         }
         #endregion
-        
+
+        #region String Compilation
+        private List<IFormatSegment> CompileString(string input)
+        {
+            var segments = new List<IFormatSegment>();
+            int lastIndex = 0;
+
+            foreach (Match match in FormatRegex.Matches(input))
+            {
+                if (match.Index > lastIndex)
+                {
+                    segments.Add(new StaticSegment(input.Substring(lastIndex, match.Index - lastIndex)));
+                }
+
+                string token = match.Groups[1].Value;
+                string lowerToken = token.ToLowerInvariant();
+                string decimalText = match.Groups[2].Value;
+                int decimals = string.IsNullOrEmpty(decimalText) ? 0 : int.Parse(decimalText);
+
+                segments.Add(token switch
+                {
+                    "k" => new DynamicSegment(() => AddLeadingZeros(GetCurrentTick(), decimals)),
+
+                    "tms" => new DynamicSegment(() => FormatTimeValue("tms", decimals)),
+                    "ts" => new DynamicSegment(() => FormatTimeValue("ts", decimals)),
+                    "tm" => new DynamicSegment(() => FormatTimeValue("tm", decimals)),
+                    "th" => new DynamicSegment(() => FormatTimeValue("th", decimals)),
+                    "td" => new DynamicSegment(() => FormatTimeValue("td", decimals)),
+
+                    "tf" => new DynamicSegment(() => GetAdjustedTimeString(@"dd\:hh\:mm\:ss\.fffffff")),
+                    "T" => new DynamicSegment(() => GetAdjustedTimeString(@"hh\:mm\:ss\.ff")),
+                    "t" => new DynamicSegment(() => GetAdjustedTimeString(@"hh\:mm\:ss")),
+
+                    "S" => new DynamicSegment(() => FormatTimeValue("S", 0, true)),
+                    "M" => new DynamicSegment(() => FormatTimeValue("M", 0, true)),
+                    "H" => new DynamicSegment(() => FormatTimeValue("H", 0, true)),
+                    "D" => new DynamicSegment(() => FormatTimeValue("D", 0, true)),
+
+                    "s" => new DynamicSegment(() => FormatTimeValue("s")),
+                    "m" => new DynamicSegment(() => FormatTimeValue("m")),
+                    "h" => new DynamicSegment(() => FormatTimeValue("h")),
+                    "d" => new DynamicSegment(() => FormatTimeValue("d")),
+
+                    var f when f.StartsWith("f") || f.StartsWith("F") => new DynamicSegment(() => GetAdjustedTimeString(f)),
+
+                    _ => new StaticSegment(match.Value)
+                });
+
+                lastIndex = match.Index + match.Length;
+            }
+
+            if (lastIndex < input.Length)
+            {
+                segments.Add(new StaticSegment(input.Substring(lastIndex)));
+            }
+
+            return segments;
+        }
+        private string RenderString(List<IFormatSegment> segments)
+        {
+            var sb = new StringBuilder();
+            foreach (var segment in segments)
+            {
+                sb.Append(segment.GetValue());
+            }
+            return sb.ToString();
+        }
+        #endregion
+
+        #region Formatting
+        private string FormatTimeValue(string unit, int decimals = 0, bool pad = false)
+        {
+            TimeSpan span = GetElapsedTimeSpan();
+
+            double rawValue = unit switch
+            {
+                "ts" or "s" or "S" => span.TotalSeconds,
+                "tm" or "m" or "M" => span.TotalMinutes,
+                "th" or "h" or "H" => span.TotalHours,
+                "td" or "d" or "D" => span.TotalDays,
+                "tms" => span.TotalMilliseconds,
+                _ => span.TotalMilliseconds,
+            };
+
+            if (hasDuration && isCountdown && (unit == "ts" || unit == "tms") && decimals == 0)
+            {
+                rawValue = Math.Ceiling(rawValue);
+            }
+
+            if (unit.StartsWith("t"))
+            {   
+                    return rawValue.ToString($"F{decimals}");
+            }
+            else 
+            {
+                int intVal = (int)rawValue;
+
+                if (unit == "s" || unit == "S") intVal %= 60;
+                else if (unit == "m" || unit == "M") intVal %= 60;
+                else if (unit == "h" || unit == "H") intVal %= 24;
+
+                return pad ? intVal.ToString("D2") : intVal.ToString();
+            }
+        }
+        private string AddLeadingZeros(int number, int totalLength)
+        {
+            return number.ToString().PadLeft(totalLength, '0');
+        }
+        #endregion
+
+        #region Time Extraction
+        private string GetAdjustedTimeString(string format)
+        {
+            TimeSpan span = GetElapsedTimeSpan();
+
+            if (Regex.IsMatch(format, @"^[fF]+$"))
+            {
+                int precision = format.Length;
+                double totalSeconds = span.TotalSeconds;
+                double fraction = totalSeconds - Math.Floor(totalSeconds);
+                int raw = (int)(fraction * Math.Pow(10, precision));
+                string s = raw.ToString().PadLeft(precision, '0');
+
+                if (char.IsUpper(format[0]))
+                {
+                    s = s.TrimEnd('0');
+                }
+
+                return s;
+            }
+
+            if (format.IndexOf('F') >= 0)
+            {
+                string fFmt = Regex.Replace(format, @"F+", m => new string('f', m.Length));
+
+                string baseText = span.ToString(fFmt);
+
+                int dot = baseText.LastIndexOf('.');
+                if (dot >= 0)
+                {
+                    string before = baseText.Substring(0, dot);
+                    string frac = baseText.Substring(dot + 1).TrimEnd('0');
+                    return frac.Length > 0 ? $"{before}.{frac}" : before;
+                }
+
+                return baseText;
+            }
+
+            Match match = Regex.Match(format, @"f+");
+
+            return span.ToString(format);
+        }
+        private double GetCurrentTime()
+        {
+            return (_stopwatch.ElapsedTicks / (double)Stopwatch.Frequency) * 1000.0;
+        }
+        private int GetCurrentTick()
+        {
+            return (int)(isCountdown && totalTicks > 0
+                ? Math.Max(0, totalTicks - _tickCount)
+                : _tickCount);
+        }
+        private TimeSpan GetElapsedTimeSpan()
+        {
+            if (_stopwatch == null)
+                return TimeSpan.Zero;
+
+            double tickScale = (double)TimeSpan.TicksPerSecond / Stopwatch.Frequency;
+            long currentTicks = (long)(_stopwatch.ElapsedTicks * tickScale);
+
+            if (state == TimerState.Paused)
+                currentTicks = (long)(pauseTime * TimeSpan.TicksPerMillisecond);
+
+            if (isCountdown && hasDuration)
+            {
+                double totalTicks = (durationMs * TimeSpan.TicksPerMillisecond);
+                double remaining = Math.Max(0.0, totalTicks - currentTicks);
+                return new TimeSpan((long)remaining);
+            }
+
+            return new TimeSpan(currentTicks);
+        }
+        #endregion
+
+        #region Execution
+        private void ExecuteCompiled(Action template)
+        {
+            if (template != null)
+                SendBang(template.Render());
+        }
+        #endregion
+
         #region Time Conversion
         private long ToMilliseconds(double number, string format)
         {
@@ -477,83 +1149,39 @@ namespace TimerPlugin
                 _ => (long)number,
             };
         }
-        internal long DaysToMs(double days)
+        private long DaysToMs(double days) => (long)(days * 24 * 60 * 60 * 1000);
+        private long HoursToMs(double hours) => (long)(hours * 60 * 60 * 1000);
+        private long MinutesToMs(double minutes) => (long)(minutes * 60 * 1000);
+        private long SecondsToMs(double seconds) => (long)(seconds * 1000);
+        private long DateToMs(string input)
         {
-            return (long)(days * 24 * 60 * 60 * 1000);
-        }
-        private long HoursToMs(double hours)
-        {
-            return (long)(hours * 60 * 60 * 1000);
-        }
-        private long MinutesToMs(double minutes)
-        {
-            return (long)(minutes * 60 * 1000);
-        }
-        private long SecondsToMs(double seconds)
-        {
-            return (long)(seconds * 1000);
-        }
-        private long DateToMs(string input, string formatLocale)
-        {
-            DateTime now = DateTime.Now;
 
             if (DateTime.TryParse(input, out DateTime target))
             {
-                return AdjustAndReturnMs(now, target);
+                return AdjustAndReturnMs(target);
             }
 
-            string[] fallbackCultures = {
-                "en-US", // English (United States)
-                "en-GB", // English (United Kingdom)
-                "fr-FR", // French (France)
-                "de-DE", // German (Germany)
-                "es-ES", // Spanish (Spain)
-                "es-MX", // Spanish (Mexico)
-                "it-IT", // Italian (Italy)
-                "pt-PT", // Portuguese (Portugal)
-                "pt-BR", // Portuguese (Brazil)
-                "ru-RU", // Russian (Russia)
-                "ja-JP", // Japanese (Japan)
-                "zh-CN", // Chinese (Simplified, China)
-                "zh-TW", // Chinese (Traditional, Taiwan)
-                "ko-KR", // Korean (Korea)
-                "nl-NL", // Dutch (Netherlands)
-                "sv-SE", // Swedish (Sweden)
-                "pl-PL", // Polish (Poland)
-                "tr-TR", // Turkish (Turkey)
-                "ar-SA", // Arabic (Saudi Arabia)
-                "cs-CZ", // Czech (Czech Republic)
-                "fi-FI", // Finnish (Finland)
-                "da-DK", // Danish (Denmark)
-                "he-IL", // Hebrew (Israel)
-                "hu-HU", // Hungarian (Hungary)
-                "no-NO", // Norwegian (Norway)
-                "th-TH"  // Thai (Thailand)
-            };
-
-            if (!string.IsNullOrWhiteSpace(formatLocale))
+            if (_customCulture != null)
             {
-                CultureInfo culture = new(formatLocale);
-                if (DateTime.TryParse(input, culture, DateTimeStyles.None, out target))
-                {
-                    return AdjustAndReturnMs(now, target);
-                }
+                if (DateTime.TryParse(input, _customCulture, DateTimeStyles.None, out target))
+                    return AdjustAndReturnMs(target);
             }
             else
-                foreach (string cultureName in fallbackCultures)
+            {
+                foreach (var culture in FallbackCultures)
                 {
-                    CultureInfo culture = new(cultureName);
                     if (DateTime.TryParse(input, culture, DateTimeStyles.None, out target))
-                    {
-                        return AdjustAndReturnMs(now, target);
-                    }
+                        return AdjustAndReturnMs(target);
                 }
+            }
 
-            _api.Log(API.LogType.Error, $"Timer.dll: Invalid date format: {input}.");
-            return 0;
+            Log("Error", $"Timer.dll: Invalid date format: {input}.");
+            return ToMilliseconds(duration, durationUnits); 
         }
-        private long AdjustAndReturnMs(DateTime now, DateTime target)
+        private long AdjustAndReturnMs(DateTime target)
         {
+            DateTime now = DateTime.Now;
+
             if (target.Date == now.Date && target.TimeOfDay <= now.TimeOfDay)
             {
                 target = target.AddDays(1);
@@ -562,237 +1190,8 @@ namespace TimerPlugin
             TimeSpan diff = target - now;
             return diff.TotalMilliseconds > 0 ? (long)diff.TotalMilliseconds : -1;
         }
-        internal double MsToDays(long milliseconds)
-        {
-            return milliseconds / (1000.0 * 60 * 60 * 24);
-        }
-        private double MsToHours(long milliseconds)
-        {
-            return milliseconds / (1000.0 * 60 * 60);
-        }
-        private double MsToMinutes(long milliseconds)
-        {
-            return milliseconds / (1000.0 * 60);
-        }
-        private double MsToSeconds(long milliseconds)
-        {
-            return (milliseconds / 1000.0);
-        }
-        #endregion
-
-        #region Elapsed Time
-        private static readonly Dictionary<string, string> PlaceholderMap = new(StringComparer.OrdinalIgnoreCase)
-        {
-            { "%tms", "[[<MILLISECONDS>]]" },
-            { "%ts",  "[[<SECONDS>]]" },
-            { "%tm",  "[[<MINUTES>]]" },
-            { "%th",  "[[<HOURS>]]" },
-            { "%td",  "[[<DAYS>]]" },
-            { "%k",   "[[<TICKCOUNT>]]" },
-            { "'",    "[[<QUOTE>]]" }
-        };
-        private static readonly List<(string Token, string Replacement)> SortedFormatTokens = new()
-        {
-            ("%FFFFFFF", "FFFFFFF"),
-            ("%FFFFFF",  "FFFFFF"),
-            ("%FFFFF",   "FFFFF"),
-            ("%FFFF",    "FFFF"),
-            ("%FFF",     "FFF"),
-            ("%FF",      "FF"),
-            ("%fffffff", "fffffff"),
-            ("%ffffff",  "ffffff"),
-            ("%fffff",   "fffff"),
-            ("%ffff",    "ffff"),
-            ("%fff",     "fff"),
-            ("%ff",      "ff"),
-            ("%T",       "hh\\:mm\\:ss\\.ff"),
-            ("%t",       "hh\\:mm\\:ss"),
-            ("%H",       "hh"),
-            ("%M",       "mm"),
-            ("%S",       "ss"),
-            ("%D",       "dd"),
-            ("%g",       "g"),
-            ("%G",       "G"),
-            ("%c",       "c"),
-            ("%F",       "%F"),
-            ("%f",       "%f"),
-            ("%h",       "%h"),
-            ("%m",       "%m"),
-            ("%s",       "%s"),
-            ("%d",       "%d")
-        };
-        private static readonly char[] FractionalTokens = { 'f', 'F', 'g', 'G', 'c' };
-        internal string GetElapsedTime(string argv)
-        {
-            string customFormat = string.IsNullOrEmpty(argv) ? "%t" : argv;
-
-            customFormat = customFormat.Replace("'", "[[<QUOTE>]]");
-
-            foreach (var kvp in PlaceholderMap)
-            {
-                if (kvp.Key == "'")
-                    continue;
-                var unitName = kvp.Value.Trim('[', ']');
-                customFormat = Regex.Replace(
-                    customFormat,
-                    $@"{Regex.Escape(kvp.Key)}(?:\{{(\d+)\}})?",
-                    m =>
-                    {
-                        var dec = m.Groups[1].Success ? m.Groups[1].Value : "0";
-                        return $"[[{unitName}:{dec}]]";
-                    },
-                    RegexOptions.IgnoreCase
-                );
-            }
-
-            foreach (var kvp in PlaceholderMap)
-            {
-                if (customFormat.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    customFormat = Regex.Replace(customFormat, Regex.Escape(kvp.Key), kvp.Value, RegexOptions.IgnoreCase);
-                }
-            }
-
-            const string defaultFormat = "%t";
-            string timeSpanFormat = ConvertFormat(customFormat);
-            string formatToUse = timeSpanFormat;
-
-            try
-            {
-                _ = TimeSpan.Zero.ToString(formatToUse);
-            }
-            catch (FormatException)
-            {
-                formatToUse = defaultFormat;
-                timeSpanFormat = ConvertFormat(defaultFormat);
-            }
-
-            TimeSpan timeToDisplay;
-
-            if (_stopwatch == null)
-            {
-                timeToDisplay = (isCountdown && durationMs > 0 && string.IsNullOrWhiteSpace(targetTime))
-                    ? TimeSpan.FromMilliseconds(durationMs)
-                    : TimeSpan.Zero;
-            }
-            else if (isCountdown && durationMs > 0)
-            {
-                if (!string.IsNullOrWhiteSpace(targetTime) && _stopwatch.Elapsed.TotalMilliseconds == 0)
-                {
-                    timeToDisplay = TimeSpan.Zero;
-                }
-                else
-                {
-                    double rem = Math.Max(0, durationMs - _stopwatch.Elapsed.TotalMilliseconds);
-                    bool wantsFraction = timeSpanFormat.IndexOfAny(FractionalTokens) >= 0;
-
-                    timeToDisplay = wantsFraction
-                        ? TimeSpan.FromMilliseconds(rem)
-                        : TimeSpan.FromSeconds(Math.Ceiling(rem / 1000.0));
-                } 
-            }
-            else
-            {
-                timeToDisplay = _stopwatch.Elapsed;
-            }
-
-            string result = timeToDisplay.ToString(formatToUse);
-
-            double rawMs = isCountdown && durationMs > 0
-                ? Math.Max(0, durationMs - (_stopwatch?.Elapsed.TotalMilliseconds ?? 0.0))
-                : _stopwatch?.Elapsed.TotalMilliseconds ?? 0.0;
-
-            result = Regex.Replace(
-                result,
-                @"\[\[<(MILLISECONDS|TICKCOUNT|SECONDS|MINUTES|HOURS|DAYS)>:(\d+)\]\]",
-                match =>
-                {
-                    var unit = match.Groups[1].Value;
-                    var decimals = int.Parse(match.Groups[2].Value);
-                    double val = unit switch
-                    {
-                        "MILLISECONDS" => rawMs,
-                        "TICKCOUNT" => _tickCount,
-                        "SECONDS" => MsToSeconds((long)rawMs),
-                        "MINUTES" => MsToMinutes((long)rawMs),
-                        "HOURS" => MsToHours((long)rawMs),
-                        "DAYS" => MsToDays((long)rawMs),
-                        _ => 0
-                    };
-                    return FormatNumber(val, decimals);
-                }
-            );
-
-            result = result.Replace("[[>QUOTE>]]", "'");
-
-            return result;
-        }
-        public static string FormatNumber(double number, int decimals)
-        {
-            if (decimals == 0)
-                return Math.Floor(number).ToString();
-            else
-                return Math.Round(number, decimals).ToString($"F{decimals}");
-        }
-        internal string ConvertFormat(string input)
-        {
-            if (string.IsNullOrEmpty(input))
-                return input;
-
-            static string EscapeLiteral(string str)
-            {
-                return $"'{str.Replace("\\", "\\\\").Replace("'", "''")}'";
-            }
-
-            var output = new StringBuilder();
-            int i = 0;
-
-            while (i < input.Length)
-            {
-                bool matched = false;
-
-                foreach (var (token, replacement) in SortedFormatTokens)
-                {
-                    if (i + token.Length <= input.Length && input.Substring(i, token.Length) == token)
-                    {
-                        output.Append(replacement);
-                        i += token.Length;
-                        matched = true;
-                        break;
-                    }
-                }
-
-                if (!matched)
-                {
-                    int start = i;
-                    while (i < input.Length)
-                    {
-                        bool isTokenStart = false;
-                        foreach (var (token, _) in SortedFormatTokens)
-                        {
-                            if (i + token.Length <= input.Length && input.Substring(i, token.Length) == token)
-                            {
-                                isTokenStart = true;
-                                break;
-                            }
-                        }
-
-                        if (isTokenStart)
-                            break;
-
-                        i++;
-                    }
-
-                    string literal = input.Substring(start, i - start);
-                    output.Append(EscapeLiteral(literal));
-                }
-            }
-
-            return output.ToString();
-        }
         #endregion
     }
-
     public class Plugin
     {
         [DllExport]
@@ -803,12 +1202,13 @@ namespace TimerPlugin
             measure.skin = api.GetSkin();
             measure.skinName = api.GetSkinName();
             measure.measureName = api.GetMeasureName();
-            // Read UpdateDivider
             measure.updateDivider = api.ReadInt("UpdateDivider", 1);
-            // Force to -1 if not already -1
+
+            measure._updateBang = $"!UpdateMeasure \"{measure.measureName}\"";
+
             if (measure.updateDivider != -1)
             {
-                api.Execute($"!SetOption \"{measure.measureName}\" \"UpdateDivider\" \"-1\"");
+                measure.SendBang($"!SetOption \"{measure.measureName}\" \"UpdateDivider\" \"-1\"");
             }
             data = GCHandle.ToIntPtr(GCHandle.Alloc(measure));
         }
@@ -825,8 +1225,8 @@ namespace TimerPlugin
         public static double Update(IntPtr data)
         {
             Measure measure = (Measure)GCHandle.FromIntPtr(data).Target;
-            measure.timeString = measure.GetElapsedTime(measure.formatString);
-            return measure.state;
+            measure.timeString = measure._formatString.Render();
+            return (double)measure.state;
         }
 
         [DllExport]
@@ -836,32 +1236,19 @@ namespace TimerPlugin
 
             try
             {
+                measure._resumeTcs?.TrySetResult(null);
                 measure._cts?.Cancel();
-                measure._pauseEvent?.Set();
-
-                if (measure._timerTask != null && !measure._timerTask.IsCompleted)
-                {
-                    try { measure._timerTask.Wait(TimeSpan.FromSeconds(1)); }
-                    catch (AggregateException) { }
-                }
+                measure._cts?.Dispose();
             }
             catch { }
 
-            measure._cts?.Dispose();
             measure._cts = null;
-            measure._pauseEvent?.Dispose();
-            measure._pauseEvent = null;
 
-            if (measure._stopwatch != null)
-            {
-                if (measure._stopwatch.IsRunning)
-                    measure._stopwatch.Stop();
-                measure._stopwatch.Reset();
-                measure._stopwatch = null;
-            }
+            if (measure._stopwatch.IsRunning)
+                measure._stopwatch.Stop();
+            measure._stopwatch.Reset();
 
             measure._timerTask = null;
-
 
             GCHandle.FromIntPtr(data).Free();
         }
@@ -891,20 +1278,20 @@ namespace TimerPlugin
 
         [DllExport]
         public static IntPtr TS(IntPtr data, int argc,
-        [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr, SizeParamIndex = 1)] string[] argv)
+            [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr, SizeParamIndex = 1)] string[] argv)
         {
-            return GetElapsedTime(data,argv);
+            return GetElapsedTime(data, argv);
         }
 
         private static IntPtr GetElapsedTime(IntPtr data, string[] argv)
         {
             string customFormat = (argv == null || argv.Length == 0) ? "%t" : argv[0];
             Measure measure = (Measure)GCHandle.FromIntPtr(data).Target;
+            Measure.Action _customFormat = string.IsNullOrEmpty(customFormat) ? null : new Measure.Action(measure, customFormat);
 
-            string timeStampText = measure.GetElapsedTime(customFormat);
+            string timeStampText = _customFormat.Render();
 
             return StringBuffer.Update(timeStampText);
         }
-
     }
 }
