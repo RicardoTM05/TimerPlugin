@@ -1,8 +1,8 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 [assembly: AssemblyCopyright("© 2025 - RicardoTM")]
-[assembly: AssemblyVersion("1.1")]
+[assembly: AssemblyVersion("1.2")]
 
 // Do not change the entries below!
 #if X64
