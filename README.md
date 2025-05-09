@@ -34,12 +34,13 @@ The package includes the plugin and 5 example skins to get you started.
 
 ## 📝 Changelog
 
-- Renamed `Update` → [`UpdateTimer`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#UpdateTimer)
-- Removed fractional time codes (`%tfd`, `%tfh`, `%tfm`, `%tfs`)
-- Added decimal‑places operator `{N}` for total‑time codes (`%td`, `%th`, `%tm`, `%ts`)
-  - e.g. `%td{3}` → `3.125` days
-
-* First public release.
+- Added Repeat option
+- Added OnRepeatAction
+- Now ResetOnStop default is -1
+- Now actions use SendNotifyMessage to send bangs to Rainmeter.
+- Now Interval and Update are correctly synced
+- Added TestingGrounds skin to the package.
+- Suttle mods to other skin examples.
 
 ---
 
@@ -97,7 +98,8 @@ FormatLocale=""
 IntervalUnits=milliseconds
 Interval=-1             
 Countdown=-1            
-ResetOnStop=1
+ResetOnStop=-1
+Repeat=-1
 OnStartAction=[]
 OnStopAction=[]
 OnResumeAction=[]
@@ -105,6 +107,7 @@ OnPauseAction=[]
 OnResetAction=[]
 OnDismissAction=[]
 OnTickAction=[]
+OnRepeatAction=[]
 ```
 
 - **UpdateTimer**: ms between updates (timer always runs). `-1` hides display but timer continues.
@@ -128,6 +131,7 @@ OnTickAction=[]
 | `%f…%fffffff`                      | Fractional seconds (up to 7 digits)                                                 |
 | `%T`                               | Shortcut for `hh:mm:ss.ff`                                                          |
 | `%t`                               | Shortcut for `hh:mm:ss`                                                             |
+| `%tf`                              | Shortcut for `hh:mm:ss.fffffff`                                                      |
 | `%td`, `%th`, `%tm`, `%ts`, `%tms` | Total elapsed days, hours, minutes, seconds, milliseconds (supports `{N}` decimals) |
 | `%k`                               | Tick count                                                                          |
 
@@ -140,7 +144,8 @@ OnTickAction=[]
 - **OnResetAction**: bangs on reset
 - **OnDismissAction**: bangs on dismiss
 - **OnTickAction**: bangs each interval
-
+- **OnRepeatAction**: bangs each repeat
+  
 ### Commands
 
 Use `[!CommandMeasure "MeasureName" "Command"]`:
@@ -205,12 +210,12 @@ Defines the format string returned by the measure. It works pretty much like the
 **Values:**
 - `"Any string with or without %Codes"`
 
-It can use any Format Code from the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) list to return the formatted elapsed time on every measure update.
+It can use any Format Code from the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#format-codes-table) list to return the formatted elapsed time on every measure update.
 
 Example:  
 `Format= %H-%M-%S` will return the elapsed/remaining time as `07-25-32`.
 
-Check the Format Codes section to see all available [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table).
+Check the Format Codes section to see all available [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#format-codes-table).
 
 ---
 
@@ -339,7 +344,7 @@ If `IntervalUnits=Hours` and `Interval=1`, the timer will execute the [`OnTickAc
 
 When `Interval <= 0`, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction) will never be executed.
 
-Every time the timer reaches the interval, it counts a "tick" up. The total ticks count can be returned by using the [Format Code](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) `%k` on the [`Format`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Format) option, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction), or on any other action.
+Every time the timer reaches the interval, it counts a "tick" up. The total ticks count can be returned by using the [Format Code](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#format-codes-table) `%k` on the [`Format`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Format) option, the [`OnTickAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#OnTickAction), or on any other action.
 
 All units take fractional numbers except milliseconds; any fraction in ms will be floored to the nearest integer.
 
@@ -356,14 +361,14 @@ Values:
 - `-1`: Disabled
 - `1`: Enabled
 
-If enabled, and [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#duration) or [`TargetTime`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#TargetTime) are set, the strings returned by the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) will start from the [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Duration) and will stop at zero.
+If enabled, and [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#duration) or [`TargetTime`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#TargetTime) are set, the strings returned by the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#format-codes-table) will start from the [`Duration`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#Duration) and will stop at zero.
 
 ---
 
 ### ResetOnStop
-**Default**: `1`
+**Default**: `-1`
 
-If disabled, the string value of the measure won't be reset to zero when the timer stops.
+If enabled, the string value of the measure will reset to zero when the timer stops.
 
 Values:
 - `-1`: Disabled
@@ -371,8 +376,22 @@ Values:
 
 ---
 
+### Repeat
+**Default**: `-1`
+
+Repeats the timer when it finishes.
+
+Values:
+- `-1`: Disabled
+- `0`: Repeat timer until manually stopped.
+- `1+`: Repeat timer given number of times.
+
+Example: when `Repeat=5` the timer will repeat 5 times, and then it will stop. Each time the timer repeats, it executes the [`OnRepeatAction`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#onrepeataction)
+
+---
+
 ## Actions
-The following actions can use the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table) to export the timer's elapsed time.
+The following actions can use the [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#format-codes-table) to export the timer's elapsed time.
 
 ### OnStartAction
 Executes given bangs when the timer starts.
@@ -437,6 +456,15 @@ OnTickAction=[!Log "Tick %k."]
 ```
 Logs: `Tick 27.`
 
+---
+
+### OnRepeatAction
+Executes given bangs on each [`Repeat`](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#repeat).
+
+Example:
+```
+OnRepeatAction=[!Log "Timer has repeated"]
+```
 ---
 
 ## 🛠️ Commands
@@ -521,7 +549,7 @@ Example:
 - Argument: `"String"`
 - Default: `%t`
 
-Returns the elapsed time formatted using [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#time-codes-table).
+Returns the elapsed time formatted using [Format Codes](https://github.com/RicardoTM05/TimerPlugin/blob/master/README.md#format-codes-table).
 
 Examples:
 ```
