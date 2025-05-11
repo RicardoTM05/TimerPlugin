@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 
 [assembly: AssemblyCopyright("© 2025 - RicardoTM")]
-[assembly: AssemblyVersion("1.2")]
+[assembly: AssemblyVersion("1.2.1")]
 
 // Do not change the entries below!
 #if X64
