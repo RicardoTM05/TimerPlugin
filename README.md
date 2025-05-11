@@ -33,7 +33,9 @@ The package includes the plugin and 5 example skins to get you started.
 - **Everyone** who dares to test and share experiences! 🙏
 
 ## 📝 Changelog
-
+- Fixed a crash when updating at 10ms.
+- Fixed missed updates and intervals firing all at once when the pc wakes up from sleeping.
+- Fixed a crash when entering an invalid number of decimal places.
 - Added Repeat option
 - Added OnRepeatAction
 - Now ResetOnStop default is -1
