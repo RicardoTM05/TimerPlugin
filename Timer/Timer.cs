@@ -9,7 +9,6 @@ using System.Text;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Globalization;
-using System.Windows.Forms;
 
 namespace TimerPlugin
 {
@@ -384,6 +383,16 @@ namespace TimerPlugin
 
                         double now = stopwatch.Elapsed.TotalMilliseconds;
 
+                        if (!_suppressCatchUp)
+                        {
+                            double missedIntervals = (now - nextIntervalMs) / intervalMs;
+                            double missedUpdates = (now - nextUpdateMs) / update;
+                            if (missedIntervals > 1 || missedUpdates > 1)
+                            {
+                                _suppressCatchUp = true;
+                            }
+                        }
+
                         if (_suppressCatchUp)
                         {
                             nextIntervalMs = Math.Ceiling(now / intervalMs) * intervalMs;
@@ -464,6 +473,16 @@ namespace TimerPlugin
                         token.ThrowIfCancellationRequested();
 
                         double now = stopwatch.Elapsed.TotalMilliseconds;
+
+                        if (!_suppressCatchUp)
+                        {
+                            double missedUpdates = (now - nextUpdateMs) / update;
+                            if (missedUpdates > 1)
+                            {
+                                _suppressCatchUp = true;
+                            }
+                        }
+
                         if (_suppressCatchUp)
                         {
                             nextUpdateMs = Math.Ceiling(now / update) * update;
@@ -520,6 +539,16 @@ namespace TimerPlugin
                         token.ThrowIfCancellationRequested();
 
                         double now = stopwatch.Elapsed.TotalMilliseconds;
+
+                        if (!_suppressCatchUp)
+                        {
+                            double missedIntervals = (now - nextIntervalMs) / intervalMs;
+                            if (missedIntervals > 1)
+                            {
+                                _suppressCatchUp = true;
+                            }
+                        }
+
                         if (_suppressCatchUp)
                         {
                             nextIntervalMs = Math.Ceiling(now / intervalMs) * intervalMs;
@@ -549,6 +578,7 @@ namespace TimerPlugin
                 { }
                 catch (Exception)
                 { }
+
                 finally
                 {
                     if (!token.IsCancellationRequested)
@@ -611,16 +641,17 @@ namespace TimerPlugin
                 return long.MaxValue;
             }
         }
-        internal unsafe void SendBang(string bang)
+        internal void SendBang(string bang)
         {
             EnsureRainmeterHwnd();
-            if (_hwndRainmeter == IntPtr.Zero) return;
+            if (_hwndRainmeter == IntPtr.Zero || string.IsNullOrEmpty(bang))
+                return;
 
-            fixed (char* pBang = bang)
-            {
-                IntPtr lpBang = (IntPtr)pBang;
-                SendNotifyMessage(_hwndRainmeter, WM_RAINMETER_EXECUTE, skin, lpBang);
-            }
+            IntPtr uniPtr = Marshal.StringToHGlobalUni(bang);
+
+            SendNotifyMessage(_hwndRainmeter,WM_RAINMETER_EXECUTE,skin,uniPtr);
+
+            _ = Task.Delay(500).ContinueWith(_ => { Marshal.FreeHGlobal(uniPtr); }, TaskScheduler.Default);
         }
         #endregion
 
@@ -961,7 +992,11 @@ namespace TimerPlugin
                 string token = match.Groups[1].Value;
                 string lowerToken = token.ToLowerInvariant();
                 string decimalText = match.Groups[2].Value;
-                int decimals = string.IsNullOrEmpty(decimalText) ? 0 : int.Parse(decimalText);
+
+                if (!int.TryParse(decimalText, out int decimals))
+                {
+                    decimals = 0;
+                }
 
                 segments.Add(token switch
                 {
